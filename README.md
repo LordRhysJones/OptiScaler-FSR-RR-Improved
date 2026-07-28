@@ -132,7 +132,7 @@ Your experience will depend on your hardware and the specific game.
 
 Installation is identical to the original OptiScaler project.
 
-Simply follow the normal OptiScaler installation instructions and replace the required files with this release.
+Simply follow the normal OptiScaler installation instructions but using our version, which can be downloaded from the releases tab or by clicking this link: https://github.com/LordRhysJones/OptiScaler-FSR-RR-Improved/releases/download/Beta/OptiScaler-FSR-RR-Improved-V0.1B.zip
 
 ---
 
