@@ -905,9 +905,23 @@ bool FSRDFeatureDx12::ConvertDenoiserBuffers(ID3D12GraphicsCommandList* InComman
     XMStoreFloat4x4(&_convDesc.PrevViewMatrix, XMMatrixTranspose(_prevViewMatrix));
 
     // Near and far planes
+    //
+    // Infinite-far-plane (reverse-Z) projection matrices make A (m22) tend to 0, which is exactly what
+    // GetViewPlanes() uses to detect the infinite case. Deriving FarPlane as abs(-B/A) in that situation
+    // divides by a near-zero value, producing a huge value that is numerically unstable and can jitter
+    // slightly frame-to-frame due to floating point noise in the source matrix. Since FarPlane directly
+    // sets the cutoff used to decide whether a pixel is "valid" or "skipped" in the conversion shader,
+    // that instability caused distant geometry (walls, roofs, anything near the far end of depth range)
+    // to flicker between the two paths - producing noise and broken temporal accumulation (ghosting) on
+    // far-away surfaces specifically. Fall back to a stable, configurable far plane whenever the matrix
+    // can't give us a trustworthy one.
     const ViewPlanes planes = GetViewPlanes(_projMatrix, DepthInverted());
     _convDesc.NearPlane = planes.nearPlane;
-    _convDesc.FarPlane = planes.farPlane;
+
+    const bool farPlaneIsUnstable =
+        planes.isInfinite || !std::isfinite(planes.farPlane) || planes.farPlane <= planes.nearPlane;
+
+    _convDesc.FarPlane = farPlaneIsUnstable ? Config::Instance()->FsrCameraFar.value_or_default() : planes.farPlane;
 
     if (!s_isHWDepth)
         _convDesc.Flags |= (uint32_t) FSRDConvFlags::IsDepthLinear;
