@@ -212,16 +212,19 @@ void CSMain(uint3 groupID : SV_GroupID, uint3 gtID : SV_GroupThreadID)
 {
     const uint2 px = groupID.xy * s_ThreadGroupSize + gtID.xy;
     const float2 uv = (float2(px) + 0.5f) * DstTexSize.zw;
-    
-    if (px.x >= DstTexSize.x || px.y >= DstTexSize.y)
-    {
-        OutColor[px] = 0.0f;
-        return;
-    }
-    
+    const bool inBounds = (px.x < DstTexSize.x) && (px.y < DstTexSize.y);
+
     [branch]
     if (IsSet(FLAGS_RAW_SOURCE_BLIT))
     {
+        // This path never touches shared memory or a group barrier, so it's safe for individual
+        // threads to bail out here.
+        if (!inBounds)
+        {
+            OutColor[px] = 0.0f;
+            return;
+        }
+
         [branch]
         if (IsSet(FLAGS_SCALE_SRC))
             OutColor[px] = InDenoisedSignal1.SampleLevel(LinearSampler, uv, 0);
@@ -230,8 +233,22 @@ void CSMain(uint3 groupID : SV_GroupID, uint3 gtID : SV_GroupThreadID)
     }
     else
     {
-        const int2 smID = gtID.xy + s_SM_HaloOffset;      
+        const int2 smID = gtID.xy + s_SM_HaloOffset;
+
+        // PopulateSharedMemory contains GroupMemoryBarrierWithGroupSync(), which every thread in the
+        // group must reach - it is undefined behaviour for some threads to return before a group
+        // barrier while others in the same group continue past it. Whenever DstTexSize wasn't an
+        // exact multiple of the 8x8 thread group (i.e. almost any output resolution not divisible by
+        // 8), the last row/column of thread groups had out-of-bounds threads returning early before
+        // this call while their in-bounds neighbours in the same group still reached the barrier.
+        // That divergence corrupted the shared-memory blend for those groups, which is what showed up
+        // as visible garbage along the edge of the frame. PopulateSharedMemory already clamps its own
+        // texture fetches to the valid image region, so it's safe (and required) to call it
+        // unconditionally here, before any thread is allowed to bail out.
         PopulateSharedMemory(groupID.xy, gtID.xy);
+
+        if (!inBounds)
+            return;
 
         // Correlate raw RT input with denoiser output
         float lowConfWeight = GetRawColorSimilarity(gtID.xy) * CorrelationBias;
