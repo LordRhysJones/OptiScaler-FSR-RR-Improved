@@ -76,6 +76,8 @@ Compared to previous FSR Ray Reconstruction implementations, users should genera
 
 These improvements represent the main goal of this project.
 
+You can view a full compatibility list of different games that are actively tested, untested or not working here:
+
 ---
 
 # Compatibility
