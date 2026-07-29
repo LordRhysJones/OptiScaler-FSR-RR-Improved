@@ -41,15 +41,15 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
 
         float AsArray[kCount];
 
-        static int GetKeyIndex(FfxApiConfigureDenoiserKey key) 
+        static int GetKeyIndex(FfxApiConfigureDenoiserKey key)
         {
-            return std::clamp((int) key - 1, 0, (int)DenoiserConfiguration::kCount);
+            return std::clamp((int) key - 1, 0, (int) DenoiserConfiguration::kCount - 1);
         }
 
         static FfxApiConfigureDenoiserKey GetIndexKey(int index)
         {
-            index = std::clamp(index, 0, (int) DenoiserConfiguration::kCount);
-            return static_cast<FfxApiConfigureDenoiserKey>(index);
+            index = std::clamp(index, 0, (int) DenoiserConfiguration::kCount - 1);
+            return static_cast<FfxApiConfigureDenoiserKey>(index + 1);
         }
 
         float& GetMember(int index) { return AsArray[index]; }
@@ -60,7 +60,13 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
     ffxContext _pDenoiserCtx;
     ffxCreateContextDescDenoiser _denoiserCtxDesc;
     DenoiserConfiguration _denoiserSettings;
-    bool _isMode2;
+
+    // Denoiser 1.2 takes the camera as matrices, but the upscaler handoff still needs these two scalars
+    float _deltaTime;
+    float _cameraFovVertical;
+
+    // Last bounds pushed to FFX_API_CONFIGURE_DENOISER_KEY_DEBUG_VIEW_LINEAR_DEPTH_BOUNDS
+    DirectX::XMFLOAT2 _debugDepthBounds;
 
     static bool s_isHWDepth;
     static bool s_isRoughnessPacked;
@@ -91,9 +97,10 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
      * @brief Generates FFX denoiser configuration and input buffers from DLSS-RR inputs and NGX configurations.
      * Converts and repacks resources internally.
      */
-    template<typename SignalDescT>
     bool PrepareDenoiserInput(ID3D12GraphicsCommandList* InCommandList, const NVSDK_NGX_Parameter& ngxParams,
-                              ffxDispatchDescDenoiser& dispatchDesc, SignalDescT& signalDesc);
+                              ffxDispatchDescDenoiser& dispatchDesc,
+                              ffxDispatchDescDenoiserIndirectSpecular& specularDesc,
+                              ffxDispatchDescDenoiserIndirectDiffuse& diffuseDesc);
 
     /**
      * @brief Retrieves DLSS-RR inputs to populate the inputs for the interop layer in order to generate
@@ -116,4 +123,10 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
     ffxReturnCode_t SetDefaultConfiguration(FfxApiConfigureDenoiserKey key);
 
     ffxReturnCode_t ApplyConfiguration(FfxApiConfigureDenoiserKey key);
+
+    /**
+     * @brief Applies the linear depth range used to normalize the denoiser's absolute linear depth debug
+     * view. Separate from ApplyConfiguration() because this key takes an FfxApiFloatBounds, not a float.
+     */
+    ffxReturnCode_t ApplyDebugViewDepthBounds(float nearPlane, float farPlane);
 };

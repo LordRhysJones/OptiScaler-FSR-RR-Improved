@@ -1677,7 +1677,7 @@ bool MenuCommon::RenderMenu()
                 else
                     ImGui::SetWindowFontScale(splashScale);
 
-                ImGui::Text("OptiScaler - %s for menu",
+                ImGui::Text(VER_FORK_NAME " - %s for menu",
                             Keybind::KeyNameFromVirtualKeyCode(config->ShortcutKey.value_or_default()).c_str());
                 ImGui::TextColored(toneMapColor(ImVec4(1.0f, 1.0f, 1.0f, 0.7f)), splashMessage.c_str());
 
@@ -2931,43 +2931,6 @@ bool MenuCommon::RenderMenu()
                     {
                         if (auto ch = ScopedCollapsingHeader("FSR-RR Advanced Settings"); ch.IsHeaderOpen())
                         {
-                            if (!state.ffxDenoiserModes.empty())
-                            {
-                                if (_ffxDenoiserMode == -1)
-                                    _ffxDenoiserMode = config->FfxDenoiserMode.value_or_default();
-
-                                const char* currentEnum = state.ffxDenoiserModeNames[_ffxDenoiserMode];
-
-                                if (ImGui::BeginCombo("Denoiser Mode", currentEnum))
-                                {
-                                    for (const int mode : state.ffxDenoiserModes)
-                                    {
-                                        bool isSelected = mode == _ffxDenoiserMode;
-
-                                        if (ImGui::Selectable(state.ffxDenoiserModeNames[mode], &isSelected))
-                                            _ffxDenoiserMode = mode;
-
-                                        if (isSelected)
-                                            ImGui::SetItemDefaultFocus();
-                                    }
-
-                                    ImGui::EndCombo();
-                                }
-                                ShowHelpMarker(
-                                    "Sets the denoising mode. "
-                                    "Higher modes are generally higher quality, but more demanding.");
-
-                                ImGui::SameLine();
-
-                                if (ImGui::Button("Change Mode") &&
-                                    _ffxDenoiserMode != config->FfxDenoiserMode.value_or_default())
-                                {
-                                    config->FfxDenoiserMode = _ffxDenoiserMode;
-                                    state.newBackend = currentBackend;
-                                    MARK_ALL_BACKENDS_CHANGED();
-                                }
-                            }
-
                             if (float v = config->FfxDenoiserDisocThreshold.value_or_default();
                                 ImGui::SliderFloat("Disocclusion Threshold", &v, 1e-2f, 1.0f))
                                 config->FfxDenoiserDisocThreshold = v;
@@ -5891,6 +5854,16 @@ bool MenuCommon::RenderMenu()
 
                 ImGui::Spacing();
                 ImGui::Separator();
+
+                // Fork credits
+                ImGui::TextColored(toneMapColor(ImVec4(1.0f, 1.0f, 1.0f, 0.6f)),
+                                   VER_FORK_NAME " " OPTI_VERSION " - a " VER_UPSTREAM_NAME
+                                                 " fork by " VER_FORK_AUTHORS);
+                ShowHelpMarker(VER_FORK_NAME " is a fork of " VER_UPSTREAM_NAME
+                                             " focused on DLSS Ray Reconstruction\n"
+                                             "on AMD GPUs, via AMD's FSR Ray Regeneration denoiser\n\n"
+                                             "Fork by " VER_FORK_AUTHORS "\n"
+                                             "Based on " VER_UPSTREAM_NAME " by cdozdil and contributors");
 
                 if (state.nvngxIniDetected)
                 {

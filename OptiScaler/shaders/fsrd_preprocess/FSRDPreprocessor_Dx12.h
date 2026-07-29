@@ -10,8 +10,8 @@ struct ID3D12Device;
 struct ID3D12GraphicsCommandList;
 struct ID3D12Resource;
 
-struct ffxDispatchDescDenoiserInput1Signal;
-struct ffxDispatchDescDenoiserInput2Signals;
+struct ffxDispatchDescDenoiserIndirectSpecular;
+struct ffxDispatchDescDenoiserIndirectDiffuse;
 struct ffxDispatchDescDenoiser;
 
 /**
@@ -43,7 +43,7 @@ class FSRDPreprocessor_Dx12
         DebugInDiffAlbedo =     5 << 17 | Debug,
         DebugInSpecAlbedo =     6 << 17 | Debug,
 
-        DebugOutFusedAlbedo =   7 << 17 | Debug,
+        // Slot 7 was the Mode 1 fused albedo, which denoiser 1.2 has no equivalent for
         DebugOutLinearDepth =   8 << 17 | Debug,
         DebugOutMotion =        9 << 17 | Debug,
         DebugOutNormals =       10 << 17 | Debug,
@@ -135,7 +135,7 @@ class FSRDPreprocessor_Dx12
 
   public:
 
-    FSRDPreprocessor_Dx12(std::string_view name, ID3D12Device* pDev, bool isMode2);
+    FSRDPreprocessor_Dx12(std::string_view name, ID3D12Device* pDev);
 
     ~FSRDPreprocessor_Dx12();
 
@@ -168,18 +168,13 @@ class FSRDPreprocessor_Dx12
     bool DispatchConversion(ID3D12GraphicsCommandList* cmdList, const ConversionDesc& desc);
 
     /**
-     * @brief Configures input/output resources after input conversion for FSR-RR with Mode-1 fused inputs.
+     * @brief Configures input/output resources after input conversion, and chains the per-lobe descs onto
+     * the dispatch desc as dispatch -> indirectSpecular -> indirectDiffuse.
      * Resources are transitioned to SRV state and valid until the next conversion or composition dispatch.
      * Must be re-acquired after each dispatch (lifetime managed internally).
      */
-    void GetSignal(ffxDispatchDescDenoiserInput1Signal& signalDesc, ffxDispatchDescDenoiser& dispatchDesc) const;
-
-    /**
-     * @brief Configures input/output resources after input conversion for FSR-RR with Mode-2 discrete diffuse/specular color.
-     * Resources are transitioned to SRV state and valid until the next conversion or composition dispatch.
-     * Must be re-acquired after each dispatch (lifetime managed internally).
-     */
-    void GetSignal(ffxDispatchDescDenoiserInput2Signals& signalDesc, ffxDispatchDescDenoiser& dispatchDesc) const;
+    void GetSignals(ffxDispatchDescDenoiser& dispatchDesc, ffxDispatchDescDenoiserIndirectSpecular& specularDesc,
+                    ffxDispatchDescDenoiserIndirectDiffuse& diffuseDesc) const;
 
     /**
      * @brief Composes the denoised radiance from FSR-RR with the skip signal previously generated 

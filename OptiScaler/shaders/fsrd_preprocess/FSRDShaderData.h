@@ -122,14 +122,7 @@ namespace FSRD
     {
         constexpr UINT kBackBufferCount = 3;
 
-        // ffxDispatchDescDenoiserInput1Signal
-        struct Mode1Signal
-        {
-            ComPtr<ID3D12Resource> Radiance;    // RGB: Combined noisy color A: Specular Ray Length - RGBA16_FLOAT
-            ComPtr<ID3D12Resource> FusedAlbedo; // RGB: max(specularAlbedo, diffuseAlbedo) A: NoV - RGBA8_UNORM
-        };
-
-        // ffxDispatchDescDenoiserInput2Signals
+        // ffxDispatchDescDenoiserIndirectSpecular / ffxDispatchDescDenoiserIndirectDiffuse
         struct Mode2Signal
         {
             ComPtr<ID3D12Resource> SpecRadiance; // RGB: Noisy specular lighting A: Specular Ray Length - RGBA16_FLOAT
@@ -188,11 +181,7 @@ namespace FSRD
         {
             struct Data
             {
-                union
-                {
-                    Mode1Signal Mode1Inputs;
-                    Mode2Signal Mode2Inputs;
-                };
+                Mode2Signal Mode2Inputs;
 
                 ComPtr<ID3D12Resource> Motion; // RG: Standard TSR motion vectors, B: Linear Depth Delta (CurrentLinearDepth - PrevLinearDepth) - RGBA16_FLOAT
                 ComPtr<ID3D12Resource> Normals; // RG: Octahedrally encoded normals, B: Linear Roughness, A: Material Type (Optional) - RGB10A2_UNORM

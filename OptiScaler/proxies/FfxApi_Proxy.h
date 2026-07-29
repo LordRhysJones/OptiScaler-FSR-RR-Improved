@@ -1082,36 +1082,45 @@ class FfxApiProxy
         case 0x00040010u:
             return std::format("CREATE_CONTEXT_DESC_TYPE_FGSWAPCHAIN_MODE_VK ({:X})", type);
 
-        // Denoiser
+        // Denoiser (sub-IDs renumbered in denoiser API 1.2)
         case 0x00050001u:
             return std::format("CREATE_CONTEXT_DESC_TYPE_DENOISER ({:X})", type);
 
-        case 0x00050002u:
+        case 0x00050021u:
+            return std::format("CONFIGURE_DESC_TYPE_DENOISER_KEYVALUE ({:X})", type);
+
+        case 0x00050041u:
             return std::format("DISPATCH_DESC_TYPE_DENOISER ({:X})", type);
 
-        case 0x00050003u:
-            return std::format("DISPATCH_DESC_INPUT_4_SIGNALS_TYPE_DENOISER ({:X})", type);
+        case 0x00050042u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_DEBUG_VIEW ({:X})", type);
 
-        case 0x00050004u:
-            return std::format("DISPATCH_DESC_INPUT_2_SIGNALS_TYPE_DENOISER ({:X})", type);
+        case 0x00050043u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_AMBIENT_OCCLUSION ({:X})", type);
 
-        case 0x00050005u:
-            return std::format("DISPATCH_DESC_INPUT_1_SIGNAL_TYPE_DENOISER ({:X})", type);
+        case 0x00050044u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_DIRECT_DIFFUSE ({:X})", type);
 
-        case 0x00050007u:
-            return std::format("DISPATCH_DESC_INPUT_DOMINANT_LIGHT_TYPE_DENOISER ({:X})", type);
+        case 0x00050045u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_DIRECT_SPECULAR ({:X})", type);
 
-        case 0x00050008u:
-            return std::format("CONFIGURE_DESC_TYPE_DENOISER_SETTINGS ({:X})", type);
+        case 0x00050046u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_DOMINANT_LIGHT ({:X})", type);
 
-        case 0x00050009u:
+        case 0x00050047u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_INDIRECT_DIFFUSE ({:X})", type);
+
+        case 0x00050048u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_INDIRECT_SPECULAR ({:X})", type);
+
+        case 0x00050049u:
+            return std::format("DISPATCH_DESC_TYPE_DENOISER_SPECULAR_OCCLUSION ({:X})", type);
+
+        case 0x00050081u:
+            return std::format("QUERY_DESC_TYPE_DENOISER_GET_DEFAULT_KEYVALUE ({:X})", type);
+
+        case 0x00050082u:
             return std::format("QUERY_DESC_TYPE_DENOISER_GPU_MEMORY_USAGE ({:X})", type);
-
-        case 0x0005000au:
-            return std::format("QUERY_DESC_TYPE_DENOISER_GET_VERSION ({:X})", type);
-
-        case 0x0005000bu:
-            return std::format("QUERY_DESC_TYPE_DENOISER_GET_DEFAULT_SETTINGS ({:X})", type);
 
         // Radiance Cache
         case 0x00060002u:

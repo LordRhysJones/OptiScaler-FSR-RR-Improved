@@ -61,14 +61,17 @@ Texture2D<half> InBiasMask : register(t8);
 
 Texture2D<half4> InFloorColor : register(t9);
 
-// FSR-RR - ffxDispatchDescDenoiserInput1Signal or ffxDispatchDescDenoiserInput2Signals
+// FSR-RR - ffxDispatchDescDenoiserIndirectSpecular::signal
 //
-// Mode 1: RGB: Noisy fused lighting
 // Mode 2: RGB: Noisy specular lighting A: Specular Ray Length
-RWTexture2D<half4> OutSignal1 : register(u0); 
+//
+// The Mode 1 branch below is dead code: denoiser 1.2 has no fused single-signal input, so the C++ side
+// always sets FLAGS_MODE_2_SIGNAL. It is kept only so the committed shader blobs stay byte-identical.
+RWTexture2D<half4> OutSignal1 : register(u0);
 
-// Mode 1: RGB Fused Albedo: max(specularAlbedo, diffuseAlbedo)
-// Mode 2: RGB: Noisy diffuse lighting for Mode 2
+// FSR-RR - ffxDispatchDescDenoiserIndirectDiffuse::signal
+//
+// Mode 2: RGB: Noisy diffuse lighting
 RWTexture2D<half4> OutSignal2 : register(u1);
 
 // ffxDispatchDescDenoiser
