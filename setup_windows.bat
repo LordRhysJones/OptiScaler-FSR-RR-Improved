@@ -1,16 +1,16 @@
 REM Setup OptiScaler for your game
 @echo off
 cls
-echo  ::::::::  :::::::::  ::::::::::: :::::::::::  ::::::::   ::::::::      :::     :::        :::::::::: :::::::::  
-echo :+:    :+: :+:    :+:     :+:         :+:     :+:    :+: :+:    :+:   :+: :+:   :+:        :+:        :+:    :+: 
-echo +:+    +:+ +:+    +:+     +:+         +:+     +:+        +:+         +:+   +:+  +:+        +:+        +:+    +:+ 
-echo +#+    +:+ +#++:++#+      +#+         +#+     +#++:++#++ +#+        +#++:++#++: +#+        +#++:++#   +#++:++#:  
-echo +#+    +#+ +#+            +#+         +#+            +#+ +#+        +#+     +#+ +#+        +#+        +#+    +#+ 
-echo #+#    #+# #+#            #+#         #+#     #+#    #+# #+#    #+# #+#     #+# #+#        #+#        #+#    #+# 
-echo  ########  ###            ###     ###########  ########   ########  ###     ### ########## ########## ###    ### 
+echo  ::::::::  :::::::::  ::::::::::: :::::::::::  ::::::::   :::::::: 
+echo :+:    :+: :+:    :+:     :+:         :+:     :+:    :+: :+:    :+:
+echo +:+    +:+ +:+    +:+     +:+         +:+     +:+    +:+ +:+    +:+
+echo +#+    +:+ +#++:++#+      +#+         +#+     +#++:++#:  +#++:++#: 
+echo +#+    +#+ +#+            +#+         +#+     +#+    +#+ +#+    +#+
+echo #+#    #+# #+#            #+#         #+#     #+#    #+# #+#    #+#
+echo  ########  ###            ###     ########### ###    ### ###    ### 
 echo.
-echo Coping is strong with this one...
-echo v2.5 - now with OptiPatcher support
+echo This project was created by Taran Jones & Rhys Jones
+echo v0.1 - THIS IS A PRE-RELEASE BETA VERSION, PLEASE REPORT ANY ISSUES ON GITHUB
 echo.
 
 del "!! EXTRACT ALL FILES TO GAME FOLDER !!" 2>nul
