@@ -9,7 +9,7 @@ echo +#+    +#+ +#+            +#+         +#+     +#+    +#+ +#+    +#+
 echo #+#    #+# #+#            #+#         #+#     #+#    #+# #+#    #+#
 echo  ########  ###            ###     ########### ###    ### ###    ### 
 echo.
-echo This project was created by Taran Jones & Rhys Jones
+echo This project was created by Taran Jones and Rhys Jones
 echo v0.1 - THIS IS A PRE-RELEASE BETA VERSION, PLEASE REPORT ANY ISSUES ON GITHUB
 echo.
 
