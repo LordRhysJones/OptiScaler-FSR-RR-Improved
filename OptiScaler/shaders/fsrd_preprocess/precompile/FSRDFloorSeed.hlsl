@@ -23,17 +23,17 @@ static const uint2 s_ThreadGroupSize = uint2(THREAD_GROUP_SIZE_X, THREAD_GROUP_S
 #define FLAGS_LINEAR_DEPTH      (1 << 0)
 
 // 5x5 sorting filter config
-#define SORT_KERNEL_SIZE        5
-#define SORT_KERNEL_RANGE_MIN   (-SORT_KERNEL_SIZE / 2)
-#define SORT_KERNEL_RANGE_MAX   (SORT_KERNEL_SIZE / 2)
+#define SORT_KERNEL_SIZE        5u
+#define SORT_KERNEL_RANGE_MIN   (-int(SORT_KERNEL_SIZE) / 2)
+#define SORT_KERNEL_RANGE_MAX   (int(SORT_KERNEL_SIZE) / 2)
 
 DEFINE_LDS_CONFIG(s_SM_Med, SORT_KERNEL_SIZE);
 DECLARE_LDS_ARRAY_2D(half4, g_Color, SORT_KERNEL_SIZE);
 
 // 3x3 Depth gradient
-#define DEPTH_KERNEL_SIZE       3
-#define DEPTH_KERNEL_RANGE_MIN  (-DEPTH_KERNEL_SIZE / 2)
-#define DEPTH_KERNEL_RANGE_MAX  (DEPTH_KERNEL_SIZE / 2)
+#define DEPTH_KERNEL_SIZE       3u
+#define DEPTH_KERNEL_RANGE_MIN  (-int(DEPTH_KERNEL_SIZE) / 2)
+#define DEPTH_KERNEL_RANGE_MAX  (int(DEPTH_KERNEL_SIZE) / 2)
 
 DEFINE_LDS_CONFIG(s_SM_Depth, DEPTH_KERNEL_SIZE);
 DECLARE_LDS_ARRAY_2D(float, g_Depth, DEPTH_KERNEL_SIZE);
@@ -65,8 +65,8 @@ static const uint SortNetwork[2 * kSortNetworkSize] =
     4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
 };
 
-Texture2D<half3> InColor : register(t0);
-Texture2D<half3> InNormals : register(t1);
+Texture2D<half4> InColor : register(t0);
+Texture2D<float4> InNormals : register(t1);
 Texture2D<float> InDepth : register(t2);
 
 RWTexture2D<half4> OutColor : register(u0);
@@ -93,7 +93,7 @@ bool IsSet(uint mask)
     return (Flags & mask) == mask;
 }
 
-int2 GetSortID(const int i, const int2 gtID)
+int2 GetSortID(const uint i, const int2 gtID)
 {
     const int offsetX = i / SORT_KERNEL_SIZE;
     const int offsetY = i % SORT_KERNEL_SIZE;
@@ -104,32 +104,32 @@ half4 GetConservativeColor(const uint2 groupID, const int2 gtID)
 {
     const int2 smID = gtID + s_SM_Med_HaloOffset;
     half sortKeys[s_SetSize];
-    int16_t sortValues[s_SetSize];
+    uint sortValues[s_SetSize];
     
     // Populate sorting keys: luminance in X, flat index (0-24) in Y
     [unroll]
-    for (int i1 = 0; i1 < s_SetSize; i1++)
+    for (uint i1 = 0; i1 < uint(s_SetSize); i1++)
     {
         const int2 smID = GetSortID(i1, gtID);
         const half lum = g_Color[smID.x][smID.y].a;
         
         sortKeys[i1] = lum;
-        sortValues[i1] = int16_t(i1);
+        sortValues[i1] = uint(i1);
     }
 
     // Sorting network - ascending order
     [unroll]
-    for (int k = 0; k < kSortNetworkSize; k++)
+    for (uint k = 0; k < kSortNetworkSize; k++)
     {
         const int pairIndex = 2 * k;
         const uint lower = SortNetwork[pairIndex];
         const uint upper = SortNetwork[pairIndex + 1];
         
         const half keyA = sortKeys[lower];
-        const int16_t valA = sortValues[lower];
+        const uint valA = sortValues[lower];
 
         const half keyB = sortKeys[upper];
-        const int16_t valB = sortValues[upper];
+        const uint valB = sortValues[upper];
         
         const bool swap = (keyA > keyB);
         sortKeys[lower] = swap ? keyB : keyA;
@@ -224,7 +224,7 @@ void PopulateSharedMemory(const uint2 groupID, const int2 gtID)
     const int2 pxMedOrigin = groupID.xy * s_ThreadGroupSize - s_SM_Med_HaloOffset;
     
     [unroll]
-    for (int i1 = 0; i1 < s_SM_Med_LoadsPerThread; i1++)
+    for (uint i1 = 0; i1 < s_SM_Med_LoadsPerThread; i1++)
     {
         const uint smFlatID = flatID + i1 * NUM_THREADS;
         
@@ -241,7 +241,7 @@ void PopulateSharedMemory(const uint2 groupID, const int2 gtID)
     const int2 pxDepthOrigin = groupID.xy * s_ThreadGroupSize - s_SM_Depth_HaloOffset;
     
     [unroll]
-    for (int i2 = 0; i2 < s_SM_Depth_LoadsPerThread; i2++)
+    for (uint i2 = 0; i2 < s_SM_Depth_LoadsPerThread; i2++)
     {
         const uint smFlatID = flatID + i2 * NUM_THREADS;
         

@@ -16,7 +16,7 @@ static const uint2 s_ThreadGroupSize = uint2(THREAD_GROUP_SIZE_X, THREAD_GROUP_S
 
 // Flags
 #define FLAGS_NON_GAMMA_ALBEDO          (1 << 0)
-
+#define FLAGS_LINEAR_DEPTH              (1 << 1)
 #define FLAGS_PACKED_ROUGHNESS          (1 << 2)
 #define FLAGS_MODE_2_SIGNAL             (1 << 3)
 
@@ -49,14 +49,14 @@ static const uint2 s_ThreadGroupSize = uint2(THREAD_GROUP_SIZE_X, THREAD_GROUP_S
 #define FLAGS_DEBUG_FLOOR_COLOR         (17 << 17 | FLAGS_DEBUG)
 
 // DLSS-RR Inputs
-Texture2D<half3> InColor : register(t0); // RGB - NVSDK_NGX_Parameter_Color
+Texture2D<half4> InColor : register(t0); // RGBA - NVSDK_NGX_Parameter_Color (alpha ignored)
 Texture2D<float> InDepth : register(t1); // R - NVSDK_NGX_Parameter_Depth - hardware or linear - inverted or not
 Texture2D<float3> InMotionVectors : register(t2); // RG - NVSDK_NGX_Parameter_MotionVectors
 Texture2D<float4> InNormals : register(t3); // RGB: Normals, A: Roughness (Optional) - NVSDK_NGX_Parameter_GBuffer_Normals
 Texture2D<float> InRoughness : register(t4); // R - May be packed in normals. NVSDK_NGX_Parameter_GBuffer_Roughness
 Texture2D<float> InSpecHitDist : register(t5); // R - NVSDK_NGX_Parameter_DLSSD_SpecularHitDistance
-Texture2D<half3> InDiffAlbedo : register(t6); // RGB - NVSDK_NGX_Parameter_GBuffer_DiffuseAlbedo
-Texture2D<half3> InSpecAlbedo : register(t7); // RGB - NVSDK_NGX_Parameter_GBuffer_SpecularAlbedo
+Texture2D<half4> InDiffAlbedo : register(t6); // RGBA - NVSDK_NGX_Parameter_GBuffer_DiffuseAlbedo (alpha ignored)
+Texture2D<half4> InSpecAlbedo : register(t7); // RGBA - NVSDK_NGX_Parameter_GBuffer_SpecularAlbedo (alpha ignored)
 Texture2D<half> InBiasMask : register(t8);
 
 Texture2D<half4> InFloorColor : register(t9);
@@ -100,15 +100,39 @@ cbuffer CB_Packing : register(b0)
 bool IsSet(uint mask) { return (Flags & mask) == mask; }
 uint GetDebugMode() { return (Flags & FLAGS_DEBUG_MODE_MASK); }
 
+float LinearizeDepth(float hwDepth, float4x4 invProj)
+{
+    // Convert hardware depth [0,1] to linear view-space Z using the inverse projection.
+    // This matches the convention used by FSRD FloorSeed and is valid for both regular
+    // and reverse-Z projections as long as NearPlane/FarPlane match the projection used.
+    const float2 uv = float2(0.5f, 0.5f);
+    float4 viewZ = mul(invProj, float4(uv * 2.0f - 1.0f, hwDepth, 1.0f));
+    viewZ.xyz /= viewZ.w;
+    return abs(viewZ.z);
+}
+
 float3 GetViewSpacePos(const int2 px)
 {
-    const float inDepth = abs(InDepth[px]);
+    float inDepth = abs(InDepth[px]);
     const float2 uv = (float2(px) + 0.5) * DstTexSize.zw;
     float3 viewSpacePos = 0.0f;
-    
-    viewSpacePos = InvProjectPosition(float3(uv, 1.0f), InvProjMatrix);
-    viewSpacePos.xy *= abs(inDepth / viewSpacePos.z);
-    viewSpacePos.z = inDepth;
+
+    [branch]
+    if (IsSet(FLAGS_LINEAR_DEPTH))
+    {
+        // Depth is already linear view-space Z; use it directly.
+        viewSpacePos = InvProjectPosition(float3(uv, 1.0f), InvProjMatrix);
+        viewSpacePos.xy *= abs(inDepth / viewSpacePos.z);
+        viewSpacePos.z = inDepth;
+    }
+    else
+    {
+        // Hardware depth buffer must be linearized before view-space reconstruction.
+        inDepth = LinearizeDepth(inDepth, InvProjMatrix);
+        viewSpacePos = InvProjectPosition(float3(uv, 1.0f), InvProjMatrix);
+        viewSpacePos.xy *= abs(inDepth / viewSpacePos.z);
+        viewSpacePos.z = inDepth;
+    }
 
     return viewSpacePos;
 }
@@ -199,9 +223,7 @@ void CSMain(uint3 groupID : SV_GroupID, uint3 gtID : SV_GroupThreadID)
         const float2 motionIn = InMotionVectors[px].rg; // RG: Pixel Movement
         const float depthDelta = (prevViewSpacePos.z - viewSpacePos.z);
         const float3 motionOut = float3(motionIn, depthDelta);
-        OutMotion[px] = half4(motionOut, 0.0f);
-
-        half hitDist = hitDist = 0.0f;
+        OutMotion[px] = half4(motionOut, 0.0f);            half hitDist = 0.0f;
         half3 demodColor = 0.0f;
         float3 fusedAlbedo = 0.0f;
         

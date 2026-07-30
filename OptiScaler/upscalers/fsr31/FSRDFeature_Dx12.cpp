@@ -364,13 +364,23 @@ bool FSRDFeatureDx12::CreateDenoiserContext()
     if (!QueryDenoiserVersions())
         return false;
 
+    // The list of selectable denoiser versions is discovered at runtime from whichever
+    // amd_fidelityfx_denoiser_dx12.dll is actually present, so its length changes when the shipped SDK
+    // changes. FfxDenoiserIndex is persisted in OptiScaler.ini, so an index saved against the previous
+    // SDK can name a version the new DLL doesn't expose. Both lookups below subscript the vectors
+    // directly, and operator[] past the end is undefined - it reads whatever follows the allocation and
+    // feeds it to ffxCreateContext as a version ID, which is a plausible crash before the first frame is
+    // ever presented. Clamp to what was actually found.
+    const int versionIndex =
+        std::clamp(cfg.FfxDenoiserIndex.value_or_default(), 0, (int) state.ffxDenoiserVersionIds.size() - 1);
+
     state.ffxDenoiserUpscalerVersion = Version();
-    parse_version(state.ffxDenoiserVersionNames[cfg.FfxDenoiserIndex.value_or_default()]);
+    parse_version(state.ffxDenoiserVersionNames[versionIndex]);
 
     ffxOverrideVersion vidOverride =
     {
         .header = { .type = FFX_API_DESC_TYPE_OVERRIDE_VERSION },
-        .versionId = state.ffxDenoiserVersionIds[cfg.FfxDenoiserIndex.value_or_default()]
+        .versionId = state.ffxDenoiserVersionIds[versionIndex]
     };
     // Create context
     // Backend desc
@@ -421,7 +431,14 @@ bool FSRDFeatureDx12::CreateDenoiserContext()
     }
 
     // Query default settings
-    SetDefaultConfiguration();
+    if (const ffxReturnCode_t configResult = SetDefaultConfiguration(); configResult != FFX_API_RETURN_OK)
+    {
+        LOG_ERROR("Failed to query default denoiser configuration: {}", FfxApiProxy::ReturnCodeToString(configResult));
+        return false;
+    }
+
+    // Reset dispatch failure latch on a fresh context so subsequent failures are logged
+    _dispatchFailed = false;
 
     // Create DLSS-RR to FSR-RR input converter
     FSRDConvShader = std::make_unique<FSRDPreprocessor_Dx12>("FSRD Converter", Device);
@@ -504,7 +521,18 @@ void FSRDFeatureDx12::UpdateSize()
             RenderWidth(), RenderHeight());
 
         DestroyDenoiserContext();
-        CreateDenoiserContext();
+
+        // CreateDenoiserContext() can fail, and its return value was being discarded. The old context has
+        // already been destroyed by this point, so on failure _pDenoiserCtx is left null while IsInited()
+        // still reports true - Evaluate() then keeps running and dispatches against a null context every
+        // frame instead of failing over. If the failure is in QueryDenoiserVersions() (which returns before
+        // _denoiserCtxDesc is reassigned) maxRenderSize also stays stale, so needsReInit remains true and
+        // the destroy/query path re-runs every frame.
+        if (!CreateDenoiserContext())
+        {
+            LOG_ERROR("Failed to reinitialize FSR-RR after resolution change, disabling feature.");
+            SetInit(false);
+        }
     }
 }
 
@@ -556,11 +584,15 @@ bool FSRDFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
 
     // Pull configuration and input buffers for DLSS-RR from the param table, convert and
     // repack input buffers into intermediate FSR-RR input buffers, and configure descriptors.
-    if (!PrepareDenoiserInput(InCommandList, *InParameters, denoiserDesc, specularDesc, diffuseDesc))
-        return false;
+    //
+    // Same reasoning as the dispatch below: if the game didn't hand us a required input this frame
+    // (matrices, albedo, normals) we still want a picture, so degrade to plain upscaling rather than
+    // dropping the frame on the floor.
+    const bool denoiserInputReady =
+        PrepareDenoiserInput(InCommandList, *InParameters, denoiserDesc, specularDesc, diffuseDesc);
 
     // Dispatch denoiser
-    if (!isDenoiseBypassed)
+    if (!isDenoiseBypassed && denoiserInputReady)
     {
         ffxDispatchDescDenoiserDebugView dispatchDebugView = {};
 
@@ -584,24 +616,27 @@ bool FSRDFeatureDx12::Evaluate(ID3D12GraphicsCommandList* InCommandList, NVSDK_N
 
         isDenoiserReady = DispatchDenoiser(InCommandList, denoiserDesc);
 
-        if (!isDenoiserReady)
-            return false;
+        // A failed denoise is not a failed frame. Returning here skipped the upscaler entirely, so the
+        // game got no output at all from this feature. Fall through with isDenoiserReady false instead:
+        // the upscaler below then runs on the game's own colour buffer rather than the composition
+        // output, which is plain FSR upscaling without ray regeneration - degraded, but rendering.
+        if (isDenoiserReady)
+        {
+            // Compose denoised signals
+            FSRDCompDesc compDesc =
+            {
+                .DstTexSize = _convDesc.RenderSize,
+                .CorrelationBias = cfg.FfxDenoiserCorrelationBias.value_or_default(),
+                .Flags = (uint32_t) GetCompDebugFlags(dbgMode)
+            };
 
-        // Compose denoised signals
-        FSRDCompDesc compDesc = 
-        { 
-            .DstTexSize = _convDesc.RenderSize,
-            .CorrelationBias = cfg.FfxDenoiserCorrelationBias.value_or_default(),
-            .Flags = (uint32_t)GetCompDebugFlags(dbgMode)
-        };
+            TryGetNGXVoidPointer(inParams, NVSDK_NGX_Parameter_Color, compDesc.InRawColor);
+            TryGetNGXVoidPointer(inParams, NVSDK_NGX_Parameter_DLSSD_ColorBeforeParticles,
+                                 compDesc.InColorBeforeParticles);
 
-        TryGetNGXVoidPointer(inParams, NVSDK_NGX_Parameter_Color, compDesc.InRawColor);
-        TryGetNGXVoidPointer(inParams, NVSDK_NGX_Parameter_DLSSD_ColorBeforeParticles, compDesc.InColorBeforeParticles);
-
-        if (!isFfxDebug && !FSRDConvShader->DispatchComposition(InCommandList, compDesc))
-            return false;
-
-        isDenoiserReady = true;
+            if (!isFfxDebug && !FSRDConvShader->DispatchComposition(InCommandList, compDesc))
+                isDenoiserReady = false;
+        }
     }
 
     // Upscaler start
@@ -972,9 +1007,7 @@ static bool TryUpdateOption(const CustomOptional<float>& cfgValue, float& curren
 bool FSRDFeatureDx12::DispatchDenoiser(ID3D12GraphicsCommandList* InCommandList,
                                        const ffxDispatchDescDenoiser& dispatchDesc)
 {
-    auto& state = State::Instance();
     const auto& cfg = *Config::Instance();
-    bool cfgChanged = false;
 
     if (TryUpdateOption(cfg.FfxDenoiserDisocThreshold, _denoiserSettings.m_DisocclusionThreshold))
         ApplyConfiguration(FFX_API_CONFIGURE_DENOISER_KEY_DISOCCLUSION_THRESHOLD);
@@ -1001,24 +1034,41 @@ bool FSRDFeatureDx12::DispatchDenoiser(ID3D12GraphicsCommandList* InCommandList,
 
     if (result != FFX_API_RETURN_OK)
     {
-        LOG_ERROR("_dispatch error: {0}", FfxApiProxy::ReturnCodeToString(result));
-
-        if (result == FFX_API_RETURN_ERROR_RUNTIME_ERROR)
+        // Do NOT request a backend change here. ChangeFeature() tears down and rebuilds the whole
+        // feature - denoiser context, PSOs, descriptor heaps and every intermediate texture - and it
+        // runs on the next Evaluate(). If the dispatch fails for a persistent reason (a rejected
+        // descriptor, an unsupported denoiser version, a missing DLSS-RR input) it will fail again
+        // immediately after the rebuild, so the recreation repeats every single frame. That churn is
+        // what collapses the framerate to single digits, and because the denoiser never completes the
+        // composition falls back to unmodulated radiance, i.e. the raw path-traced noise.
+        //
+        // Log once per context instead and let the caller degrade to plain upscaling.
+        if (!_dispatchFailed)
         {
-            LOG_WARN("Trying to recover by recreating the feature");
-            state.changeBackend[Handle()->Id] = true;
+            _dispatchFailed = true;
+            LOG_ERROR("_dispatch error: {0}. Continuing without ray regeneration.",
+                      FfxApiProxy::ReturnCodeToString(result));
         }
 
         return false;
     }
 
+    _dispatchFailed = false;
     return true;
 }
 
-void FSRDFeatureDx12::SetDefaultConfiguration()
+ffxReturnCode_t FSRDFeatureDx12::SetDefaultConfiguration()
 {
+    ffxReturnCode_t lastResult = FFX_API_RETURN_OK;
+
     for (int i = 0; i < DenoiserConfiguration::kCount; i++)
-        SetDefaultConfiguration(DenoiserConfiguration::GetIndexKey(i));
+    {
+        lastResult = SetDefaultConfiguration(DenoiserConfiguration::GetIndexKey(i));
+        if (lastResult != FFX_API_RETURN_OK)
+            break;
+    }
+
+    return lastResult;
 }
 
 ffxReturnCode_t FSRDFeatureDx12::SetDefaultConfiguration(FfxApiConfigureDenoiserKey key)
@@ -1046,6 +1096,10 @@ ffxReturnCode_t FSRDFeatureDx12::ApplyConfiguration(FfxApiConfigureDenoiserKey k
     };
 
     const ffxReturnCode_t code = FfxApiProxy::D3D12_Configure(&_pDenoiserCtx, &configureDesc.header);
+
+    if (code != FFX_API_RETURN_OK)
+        LOG_ERROR("ApplyConfiguration(key={}) failed: {}", (uint64_t)key, FfxApiProxy::ReturnCodeToString(code));
+
     return code;
 }
 
@@ -1063,5 +1117,10 @@ ffxReturnCode_t FSRDFeatureDx12::ApplyDebugViewDepthBounds(float nearPlane, floa
         .data = &bounds
     };
 
-    return FfxApiProxy::D3D12_Configure(&_pDenoiserCtx, &configureDesc.header);
+    const ffxReturnCode_t code = FfxApiProxy::D3D12_Configure(&_pDenoiserCtx, &configureDesc.header);
+
+    if (code != FFX_API_RETURN_OK)
+        LOG_ERROR("ApplyDebugViewDepthBounds failed: {}", FfxApiProxy::ReturnCodeToString(code));
+
+    return code;
 }

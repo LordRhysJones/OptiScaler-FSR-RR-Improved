@@ -68,6 +68,9 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
     // Last bounds pushed to FFX_API_CONFIGURE_DENOISER_KEY_DEBUG_VIEW_LINEAR_DEPTH_BOUNDS
     DirectX::XMFLOAT2 _debugDepthBounds;
 
+    // Latches a failed denoiser dispatch so the error is logged once rather than every frame
+    bool _dispatchFailed = false;
+
     static bool s_isHWDepth;
     static bool s_isRoughnessPacked;
 
@@ -118,7 +121,7 @@ class FSRDFeatureDx12 : public FSR31FeatureDx12
      */
     bool DispatchDenoiser(ID3D12GraphicsCommandList* InCommandList, const ffxDispatchDescDenoiser& dispatchDesc);
 
-    void SetDefaultConfiguration();
+    ffxReturnCode_t SetDefaultConfiguration();
 
     ffxReturnCode_t SetDefaultConfiguration(FfxApiConfigureDenoiserKey key);
 

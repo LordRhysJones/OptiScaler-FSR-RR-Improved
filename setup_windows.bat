@@ -350,7 +350,7 @@ goto create_uninstaller
 :create_uninstaller_return
 
 cls
-echo  OptiScaler setup completed successfully...
+echo  OptiRR setup completed successfully...
 echo.
 echo   ___                 
 echo  (_         '        
